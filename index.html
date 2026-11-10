@@ -103,27 +103,6 @@
   </header>
 
   <main class="max-w-[1600px] mx-auto px-4 py-5">
-    <!-- 账户资产条 -->
-    <div class="bg-white rounded-xl border border-slate-200 p-4 mb-3 flex flex-wrap items-center gap-x-8 gap-y-3">
-      <div>
-        <p class="text-xs text-slate-500">本站账户余额</p>
-        <p class="text-xl font-bold text-slate-900 mono">$<span id="walletBalance">—</span></p>
-      </div>
-      <div>
-        <p class="text-xs text-slate-500">累计充值</p>
-        <p class="text-xl font-bold text-slate-700 mono">$<span id="walletTotal">—</span></p>
-      </div>
-      <div>
-        <p class="text-xs text-slate-500">商户 ID</p>
-        <p class="text-sm font-medium text-slate-600 mono mt-1" id="walletMid">—</p>
-      </div>
-      <div class="flex-1"></div>
-      <div>
-        <p class="text-xs text-slate-500 mb-1">上游供应商余额（Ones / IPNux）</p>
-        <p id="upBalance" class="text-sm text-amber-600">当前角色无权读取</p>
-      </div>
-      <button id="rechargeBtn" class="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm rounded-lg transition">充值 ↗</button>
-    </div>
     <!-- 统计卡片 -->
     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
       <div class="bg-white rounded-xl border border-slate-200 p-4">
@@ -209,7 +188,11 @@
               <th class="px-4 py-3 font-medium">品类</th>
               <th class="px-4 py-3 font-medium">来源</th>
               <th class="px-4 py-3 font-medium">到期</th>
-              <th class="px-4 py-3 font-medium">剩余天数</th>
+              <th class="px-4 py-3 font-medium whitespace-nowrap">
+                <button id="daysSortBtn" class="inline-flex items-center gap-1 hover:text-slate-800 transition" title="切换剩余天数排序">
+                  剩余天数<span id="daysSortIcon" class="text-slate-400">▼</span>
+                </button>
+              </th>
               <th class="px-4 py-3 font-medium">状态</th>
               <th class="px-4 py-3 font-medium text-right">操作</th>
             </tr>
@@ -217,10 +200,20 @@
           <tbody id="tbody"></tbody>
         </table>
       </div>
-      <div class="px-4 py-3 border-t border-slate-200 flex items-center justify-between text-sm">
+      <div class="px-4 py-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 text-sm">
         <span id="rangeInfo" class="text-slate-500"></span>
-        <div class="flex gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-slate-500">每页</span>
+          <select id="pageSizeSel" class="px-2 py-1.5 border border-slate-300 rounded-lg text-sm bg-white">
+            <option value="20">20</option>
+            <option value="50">50</option>
+            <option value="100" selected>100</option>
+          </select>
+          <span class="text-slate-500 ml-1">跳到</span>
+          <input id="jumpPage" type="number" min="1" placeholder="页码" class="w-16 px-2 py-1.5 border border-slate-300 rounded-lg text-sm text-center">
+          <button id="jumpBtn" class="px-3 py-1.5 border border-slate-300 rounded-lg hover:bg-slate-50 transition">跳转</button>
           <button id="prevBtn" class="px-3 py-1.5 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition">上一页</button>
+          <span id="pageNow" class="text-slate-500 min-w-[64px] text-center">1 / 1</span>
           <button id="nextBtn" class="px-3 py-1.5 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition">下一页</button>
         </div>
       </div>
@@ -309,6 +302,9 @@ const S = {
   timer: null,
   stoppedCount: 0,
   merchantId: null,
+  sortMode: 'expire',   // 'expire' = 按到期时间倒序 | 'days' = 按剩余天数排
+  sortDir: 'desc',      // 'desc' = 剩余天数多的在前 | 'asc' = 少的在前
+  pageSize: 100,        // 每页条数，可在分页栏切换 20/50/100
 };
 
 const $ = id => document.getElementById(id);
@@ -471,12 +467,14 @@ function applyFilter() {
     return true;
   });
   S.page = 1;
-  // 排序：到期时间最晚的排第一（无到期时间的排最后）
-  S.filtered.sort((a, b) => {
-    const ta = Date.parse((a.expireDatetime || '').replace(' ', 'T')) || 0;
-    const tb = Date.parse((b.expireDatetime || '').replace(' ', 'T')) || 0;
-    return tb - ta;
-  });
+  // 排序：默认到期时间最晚的排第一；点「剩余天数」切换为按剩余天数升序/降序
+  const tOf = r => Date.parse((r.expireDatetime || '').replace(' ', 'T')) || 0;
+  if (S.sortMode === 'days') {
+    const dir = S.sortDir === 'asc' ? 1 : -1;   // asc = 剩余天数从少到多
+    S.filtered.sort((a, b) => dir * (tOf(a) - tOf(b)));
+  } else {
+    S.filtered.sort((a, b) => tOf(b) - tOf(a));
+  }
   renderTable();
 }
 
@@ -521,8 +519,10 @@ function render() {
 function renderTable() {
   const tb = $('tbody');
   tb.innerHTML = '';
-  const start = (S.page - 1) * CONFIG.pageSize;
-  const pageRows = S.filtered.slice(start, start + CONFIG.pageSize);
+  const PS = S.pageSize || CONFIG.pageSize;
+  const start = (S.page - 1) * PS;
+  const pageRows = S.filtered.slice(start, start + PS);
+  const totalPages = Math.max(1, Math.ceil(S.filtered.length / PS));
 
   if (!pageRows.length) {
     tb.appendChild(el('tr', '', `<td colspan="9" class="px-4 py-12 text-center text-slate-400">没有匹配的记录</td>`));
@@ -577,10 +577,11 @@ function renderTable() {
   }
 
   $('rangeInfo').textContent = S.filtered.length
-    ? `显示第 ${start + 1} - ${Math.min(start + CONFIG.pageSize, S.filtered.length)} 条，共 ${S.filtered.length} 条`
+    ? `显示第 ${start + 1} - ${Math.min(start + PS, S.filtered.length)} 条，共 ${S.filtered.length} 条`
     : '共 0 条';
+  $('pageNow').textContent = `${S.page} / ${totalPages}`;
   $('prevBtn').disabled = S.page <= 1;
-  $('nextBtn').disabled = start + CONFIG.pageSize >= S.filtered.length;
+  $('nextBtn').disabled = S.page >= totalPages;
 }
 
 // ============================================================
@@ -784,32 +785,14 @@ async function submitBuy() {
 }
 
 // ============================================================
-//  账户资产 / 余额
+//  账户信息（余额栏已移除，只保留 merchantId 供必要时内部使用）
 // ============================================================
 async function loadWallet() {
   try {
     const d = await api('/client/merchant/walletInfo');
-    if (d.code === 200 && d.data) {
-      S.merchantId = d.data.merchantId || null;
-      $('walletBalance').textContent = Number(d.data.balance || 0).toFixed(2);
-      $('walletTotal').textContent = Number(d.data.totalAmount || 0).toFixed(2);
-      $('walletMid').textContent = d.data.merchantId ?? '—';
-    }
+    if (d.code === 200 && d.data) S.merchantId = d.data.merchantId || null;
   } catch (e) {
-    console.warn('余额读取失败', e);
-    $('walletBalance').textContent = '—';
-  }
-  // 上游供应商余额：admin/代理商角色才有对应接口，客户角色固定 404/403
-  const up = await api('/admin/ones/balance').catch(() => null);
-  if (up && up.code === 200) {
-    const parts = [];
-    if (up.data && up.data.balance != null) parts.push('Ones $' + Number(up.data.balance).toFixed(2));
-    if (up.data && up.data.ipnuxBalance != null) parts.push('IPNux $' + Number(up.data.ipnuxBalance).toFixed(2));
-    $('upBalance').textContent = parts.join(' · ') || '已读取';
-    $('upBalance').className = 'text-sm text-emerald-600 font-medium';
-  } else {
-    $('upBalance').textContent = '当前角色无权读取（需管理员/代理商）';
-    $('upBalance').className = 'text-sm text-amber-600';
+    console.warn('账户信息读取失败', e);
   }
 }
 
@@ -835,7 +818,7 @@ $('captchaImg').addEventListener('click', loadCaptcha);
 $('loginBtn').addEventListener('click', doLogin);
 $('tokenBtn').addEventListener('click', useToken);
 $('refreshBtn').addEventListener('click', () => refresh());
-$('rechargeBtn').addEventListener('click', () => window.open('https://ly-proxy.com/client/merchant/walletRecharge', '_blank'));
+
 $('exportBtn').addEventListener('click', exportCSV);
 $('logoutBtn').addEventListener('click', logout);
 $('showStoppedBtn').addEventListener('click', toggleStopped);
@@ -847,8 +830,40 @@ $('buyRegion').addEventListener('change', () => { BUY.country = $('buyRegion').v
 $('buyPrevBtn').addEventListener('click', () => { if (BUY.page > 1) { BUY.page--; loadBuyIps(); } });
 $('buyNextBtn').addEventListener('click', () => { BUY.page++; loadBuyIps(); });
 $('submitBuyBtn').addEventListener('click', submitBuy);
-$('prevBtn').addEventListener('click', () => { S.page--; renderTable(); });
-$('nextBtn').addEventListener('click', () => { S.page++; renderTable(); });
+$('prevBtn').addEventListener('click', () => { if (S.page > 1) { S.page--; renderTable(); } });
+$('nextBtn').addEventListener('click', () => {
+  const PS = S.pageSize || CONFIG.pageSize;
+  const totalPages = Math.max(1, Math.ceil(S.filtered.length / PS));
+  if (S.page < totalPages) { S.page++; renderTable(); }
+});
+// 每页条数
+$('pageSizeSel').addEventListener('change', e => {
+  S.pageSize = parseInt(e.target.value, 10) || 100;
+  S.page = 1;
+  renderTable();
+});
+// 跳转到指定页
+function doJump() {
+  const PS = S.pageSize || CONFIG.pageSize;
+  const totalPages = Math.max(1, Math.ceil(S.filtered.length / PS));
+  let p = parseInt($('jumpPage').value, 10);
+  if (!p || p < 1) return;
+  if (p > totalPages) p = totalPages;
+  S.page = p;
+  $('jumpPage').value = '';
+  renderTable();
+}
+$('jumpBtn').addEventListener('click', doJump);
+$('jumpPage').addEventListener('keydown', e => { if (e.key === 'Enter') doJump(); });
+// 剩余天数排序：第一次点 = 少的在前（asc），再点 = 多的在前（desc），第三次回到按到期时间倒序
+$('daysSortBtn').addEventListener('click', () => {
+  if (S.sortMode === 'expire') { S.sortMode = 'days'; S.sortDir = 'asc'; }
+  else if (S.sortDir === 'asc') { S.sortDir = 'desc'; }
+  else { S.sortMode = 'expire'; }
+  $('daysSortIcon').textContent = S.sortMode === 'days' ? (S.sortDir === 'asc' ? '▲' : '▼') : '▼';
+  $('daysSortIcon').className = S.sortMode === 'days' ? 'text-blue-600' : 'text-slate-400';
+  applyFilter();
+});
 ['search', 'fCountry', 'fType', 'fStatus', 'fSource'].forEach(id => {
   $(id).addEventListener('input', applyFilter);
   $(id).addEventListener('change', applyFilter);
