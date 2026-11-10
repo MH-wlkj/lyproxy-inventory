@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LyProxy 代理库存</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  ::-webkit-scrollbar{width:8px;height:8px}
+  ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}
+  .sticky-head th{position:sticky;top:0;background:#f8fafc;z-index:10}
+  tr:hover td{background:#f1f5f9}
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+<!-- ============ 登录 / 设置面板 ============ -->
+<div id="authPanel" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-8">
+    <h1 class="text-2xl font-bold text-slate-900 mb-1">LyProxy 代理库存</h1>
+    <p class="text-sm text-slate-500 mb-6">登录后实时读取你账号下的全部代理 IP</p>
+
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">API 地址</label>
+        <input id="apiBase" class="w-full px-3 py-2.5 border border-slate-300 rounded-lg mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" value="https://ly-proxy.com/api/proxy">
+        <p class="text-xs text-slate-400 mt-1">默认官方接口，如需走代理可在下方配置</p>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1.5">账号</label>
+          <input id="username" class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" placeholder="djh123" autocomplete="username">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1.5">密码</label>
+          <input id="password" type="password" class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" placeholder="••••••••" autocomplete="current-password">
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">验证码</label>
+        <div class="flex gap-3 items-center">
+          <input id="code" class="flex-1 px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" placeholder="输入计算结果，如 8*9=72" autocomplete="off">
+          <img id="captchaImg" class="h-11 w-[136px] rounded border border-slate-200 cursor-pointer bg-slate-100 object-contain" title="点击刷新" alt="点击刷新">
+        </div>
+        <p class="text-xs text-slate-400 mt-1">点击图片刷新。如提示「验证码错误」，请刷新后重试</p>
+      </div>
+
+      <div id="authMsg" class="hidden text-sm px-3 py-2.5 rounded-lg"></div>
+
+      <button id="loginBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition">登录并读取</button>
+
+      <div class="relative py-2">
+        <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-200"></div></div>
+        <div class="relative flex justify-center"><span class="bg-white px-3 text-xs text-slate-400">或</span></div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">直接粘贴 Token</label>
+        <input id="tokenInput" class="w-full px-3 py-2.5 border border-slate-300 rounded-lg mono text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" placeholder="eyJhbGciOiJIUzM4NCJ9...">
+        <button id="tokenBtn" class="mt-2 w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2 rounded-lg transition text-sm">用 Token 登录</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 主界面 ============ -->
+<div id="app" class="hidden">
+  <!-- 顶栏 -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+    <div class="max-w-[1600px] mx-auto px-4 py-3 flex items-center gap-4 flex-wrap">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"/></svg>
+        </div>
+        <div>
+          <h1 class="font-bold text-slate-900 leading-tight">代理库存</h1>
+          <p id="userLine" class="text-xs text-slate-500"></p>
+        </div>
+      </div>
+
+      <div class="flex-1"></div>
+
+      <div class="flex items-center gap-2">
+        <button id="refreshBtn" class="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition flex items-center gap-1.5">
+          <svg id="refreshIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          <span>刷新</span>
+        </button>
+        <button id="exportBtn" class="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm rounded-lg transition">导出 CSV</button>
+        <button id="logoutBtn" class="px-3 py-2 text-slate-500 hover:text-slate-800 text-sm transition">退出</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-[1600px] mx-auto px-4 py-5">
+    <!-- 统计卡片 -->
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <p class="text-xs text-slate-500 mb-1">总 IP 数</p>
+        <p id="statTotal" class="text-2xl font-bold text-slate-900">0</p>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <p class="text-xs text-slate-500 mb-1">在线</p>
+        <p id="statOnline" class="text-2xl font-bold text-emerald-600">0</p>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <p class="text-xs text-slate-500 mb-1">离线/异常</p>
+        <p id="statOffline" class="text-2xl font-bold text-rose-500">0</p>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <p class="text-xs text-slate-500 mb-1">覆盖国家</p>
+        <p id="statCountry" class="text-2xl font-bold text-slate-900">0</p>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <p class="text-xs text-slate-500 mb-1">30 天内到期</p>
+        <p id="statExpiring" class="text-2xl font-bold text-amber-600">0</p>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <p class="text-xs text-slate-500 mb-1">最近同步</p>
+        <p id="statSync" class="text-sm font-medium text-slate-600 mt-1.5">—</p>
+      </div>
+    </div>
+
+    <!-- 筛选条 -->
+    <div class="bg-white rounded-xl border border-slate-200 p-4 mb-4">
+      <div class="flex flex-wrap gap-3 items-end">
+        <div class="flex-1 min-w-[200px]">
+          <label class="block text-xs text-slate-500 mb-1">搜索 IP / 账号 / 地区</label>
+          <input id="search" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="搜索...">
+        </div>
+        <div>
+          <label class="block text-xs text-slate-500 mb-1">国家</label>
+          <select id="fCountry" class="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white min-w-[130px]">
+            <option value="">全部</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-slate-500 mb-1">品类</label>
+          <select id="fType" class="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white min-w-[130px]">
+            <option value="">全部</option>
+            <option value="1">ISP住宅/原生</option>
+            <option value="0">机房</option>
+            <option value="3">双ISP</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-slate-500 mb-1">状态</label>
+          <select id="fStatus" class="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white min-w-[110px]">
+            <option value="">全部</option>
+            <option value="1">正常</option>
+            <option value="2">已停止</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-slate-500 mb-1">来源</label>
+          <select id="fSource" class="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white min-w-[120px]">
+            <option value="">全部</option>
+            <option value="local">本地线</option>
+            <option value="ipnux">IPNux 线</option>
+          </select>
+        </div>
+        <button id="clearFilter" class="px-3 py-2 text-slate-500 hover:text-slate-800 text-sm transition">清空</button>
+      </div>
+    </div>
+
+    <!-- 列表 -->
+    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div class="overflow-auto max-h-[calc(100vh-360px)]">
+        <table class="w-full text-sm">
+          <thead class="sticky-head bg-slate-50 border-b border-slate-200">
+            <tr class="text-left text-xs text-slate-500 uppercase tracking-wide">
+              <th class="px-4 py-3 font-medium">IP</th>
+              <th class="px-4 py-3 font-medium">端口</th>
+              <th class="px-4 py-3 font-medium">账号</th>
+              <th class="px-4 py-3 font-medium">密码</th>
+              <th class="px-4 py-3 font-medium">地区</th>
+              <th class="px-4 py-3 font-medium">品类</th>
+              <th class="px-4 py-3 font-medium">来源</th>
+              <th class="px-4 py-3 font-medium">到期</th>
+              <th class="px-4 py-3 font-medium">状态</th>
+              <th class="px-4 py-3 font-medium text-right">操作</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="px-4 py-3 border-t border-slate-200 flex items-center justify-between text-sm">
+        <span id="rangeInfo" class="text-slate-500"></span>
+        <div class="flex gap-2">
+          <button id="prevBtn" class="px-3 py-1.5 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition">上一页</button>
+          <button id="nextBtn" class="px-3 py-1.5 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition">下一页</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ============================================================
+//  配置
+// ============================================================
+const CONFIG = {
+  apiBase: 'https://ly-proxy.com/api/proxy',
+  pageSize: 100,          // 前端每页显示
+  fetchPageSize: 1000,    // 后端单次拉取上限
+  autoRefreshMs: 60000,   // 自动刷新间隔（0 = 关闭）
+  storageKey: 'lyproxy_token',
+};
+
+// ============================================================
+//  状态
+// ============================================================
+const S = {
+  token: '',
+  rows: [],
+  filtered: [],
+  page: 1,
+  captchaUuid: '',
+  apiBase: CONFIG.apiBase,
+  timer: null,
+};
+
+const $ = id => document.getElementById(id);
+const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// ============================================================
+//  API
+// ============================================================
+async function api(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  if (S.token) headers['Authorization'] = 'Bearer ' + S.token;
+  const res = await fetch(S.apiBase + path, { ...opts, headers });
+  const text = await res.text();
+  let data;
+  try { data = JSON.parse(text); } catch { throw new Error('响应解析失败: ' + text.slice(0, 120)); }
+  if (data.code === 401) { logout(); throw new Error('登录已失效'); }
+  return data;
+}
+
+async function loadCaptcha() {
+  try {
+    const d = await api('/captchaImage');
+    if (d.img) {
+      $('captchaImg').src = 'data:image/png;base64,' + d.img;
+      S.captchaUuid = d.uuid;
+    }
+  } catch (e) { console.warn('验证码加载失败', e); }
+}
+
+async function doLogin() {
+  const username = $('username').value.trim();
+  const password = $('password').value;
+  const code = $('code').value.trim();
+  if (!username || !password) return showMsg('请填写账号和密码', 'error');
+
+  const btn = $('loginBtn');
+  btn.disabled = true; btn.textContent = '登录中...';
+  try {
+    const d = await api('/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password, code, uuid: S.captchaUuid, rememberMe: false })
+    });
+    if (d.token) {
+      S.token = d.token;
+      localStorage.setItem(CONFIG.storageKey, d.token);
+      await boot();
+    } else {
+      showMsg(d.msg || '登录失败', 'error');
+      loadCaptcha();
+      $('code').value = '';
+    }
+  } catch (e) {
+    showMsg(e.message, 'error');
+    loadCaptcha();
+  } finally {
+    btn.disabled = false; btn.textContent = '登录并读取';
+  }
+}
+
+async function useToken() {
+  const t = $('tokenInput').value.trim().replace(/^Bearer\s+/i, '');
+  if (!t) return showMsg('请粘贴 Token', 'error');
+  S.token = t;
+  localStorage.setItem(CONFIG.storageKey, t);
+  await boot();
+}
+
+// ============================================================
+//  数据
+// ============================================================
+async function fetchAll() {
+  const all = [];
+  let page = 1;
+  while (page <= 30) {
+    const d = await api(`/admin/ip/merchant/list?pageNum=${page}&pageSize=${CONFIG.fetchPageSize}`);
+    if (!d.rows || !d.rows.length) break;
+    all.push(...d.rows);
+    const total = d.total || 0;
+    setSyncText(`拉取中 ${all.length}/${total}`);
+    if (all.length >= total) break;
+    page++;
+  }
+  return all;
+}
+
+async function refresh() {
+  const icon = $('refreshIcon');
+  icon.classList.add('animate-spin');
+  try {
+    const rows = await fetchAll();
+    S.rows = rows;
+    render();
+    setSyncText(new Date().toLocaleTimeString('zh-CN'));
+    $('statSync').textContent = new Date().toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit'});
+  } catch (e) {
+    console.error(e);
+    alert('刷新失败：' + e.message);
+  } finally {
+    icon.classList.remove('animate-spin');
+  }
+}
+
+function setSyncText(t) { $('statSync').textContent = t; }
+
+// ============================================================
+//  渲染
+// ============================================================
+const TYPE_MAP = { '1': 'ISP住宅/原生', '0': '机房', '3': '双ISP' };
+const STATUS_MAP = { '1': ['正常', 'text-emerald-700 bg-emerald-50'], '2': ['已停止', 'text-rose-700 bg-rose-50'], '0': ['异常', 'text-amber-700 bg-amber-50'] };
+
+function applyFilter() {
+  const q = $('search').value.trim().toLowerCase();
+  const fc = $('fCountry').value;
+  const ft = $('fType').value;
+  const fs = $('fStatus').value;
+  const fsrc = $('fSource').value;
+
+  S.filtered = S.rows.filter(r => {
+    if (fc && r.countryCode !== fc) return false;
+    if (ft && String(r.type) !== ft) return false;
+    if (fs && String(r.status) !== fs) return false;
+    if (fsrc === 'ipnux' && !r.ipnuxProxyId) return false;
+    if (fsrc === 'local' && r.ipnuxProxyId) return false;
+    if (q) {
+      const hay = [r.ip, r.account, r.location, r.countryCode, r.port].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  S.page = 1;
+  renderTable();
+}
+
+function render() {
+  // 统计
+  const total = S.rows.length;
+  const online = S.rows.filter(r => String(r.status) === '1').length;
+  const countries = new Set(S.rows.map(r => r.countryCode).filter(Boolean));
+  const now = Date.now();
+  const expiring = S.rows.filter(r => {
+    const t = Date.parse((r.expireDatetime || '').replace(' ', 'T'));
+    return t && t > now && t - now < 30 * 864e5;
+  }).length;
+
+  $('statTotal').textContent = total;
+  $('statOnline').textContent = online;
+  $('statOffline').textContent = total - online;
+  $('statCountry').textContent = countries.size;
+  $('statExpiring').textContent = expiring;
+
+  // 国家下拉
+  const sel = $('fCountry');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">全部</option>';
+  const ccCount = {};
+  S.rows.forEach(r => { if (r.countryCode) ccCount[r.countryCode] = (ccCount[r.countryCode] || 0) + 1; });
+  Object.entries(ccCount).sort((a, b) => b[1] - a[1]).forEach(([cc, n]) => {
+    const o = document.createElement('option');
+    o.value = cc; o.textContent = `${cc} (${n})`;
+    sel.appendChild(o);
+  });
+  sel.value = cur;
+
+  applyFilter();
+}
+
+function renderTable() {
+  const tb = $('tbody');
+  tb.innerHTML = '';
+  const start = (S.page - 1) * CONFIG.pageSize;
+  const pageRows = S.filtered.slice(start, start + CONFIG.pageSize);
+
+  if (!pageRows.length) {
+    tb.appendChild(el('tr', '', `<td colspan="10" class="px-4 py-12 text-center text-slate-400">没有匹配的记录</td>`));
+  } else {
+    pageRows.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.className = 'border-b border-slate-100 transition';
+      const typeName = TYPE_MAP[String(r.type)] || (r.type == null ? '—' : 'type=' + r.type);
+      const src = r.ipnuxProxyId ? 'IPNux' : '本地';
+      const srcCls = r.ipnuxProxyId ? 'bg-violet-50 text-violet-700' : 'bg-slate-100 text-slate-600';
+      const [stName, stCls] = STATUS_MAP[String(r.status)] || ['未知', 'bg-slate-100 text-slate-600'];
+      const exp = (r.expireDatetime || '').slice(0, 10);
+
+      tr.innerHTML = `
+        <td class="px-4 py-2.5 mono text-slate-900">${esc(r.ip)}</td>
+        <td class="px-4 py-2.5 mono text-slate-600">${esc(r.port)}</td>
+        <td class="px-4 py-2.5 mono text-slate-600">${esc(r.account)}</td>
+        <td class="px-4 py-2.5 mono text-slate-600">${esc(r.password)}</td>
+        <td class="px-4 py-2.5 text-slate-600">${esc(r.countryCode)} ${esc(r.location || '')}</td>
+        <td class="px-4 py-2.5 text-slate-600">${esc(typeName)}</td>
+        <td class="px-4 py-2.5"><span class="px-2 py-0.5 rounded text-xs ${srcCls}">${src}</span></td>
+        <td class="px-4 py-2.5 text-slate-500 text-xs">${esc(exp)}</td>
+        <td class="px-4 py-2.5"><span class="px-2 py-0.5 rounded text-xs ${stCls}">${stName}</span></td>
+        <td class="px-4 py-2.5 text-right whitespace-nowrap">
+          <button class="copyBtn text-blue-600 hover:text-blue-800 text-xs font-medium" data-ip="${esc(r.ip)}" data-port="${esc(r.port)}" data-account="${esc(r.account)}" data-password="${esc(r.password)}">复制</button>
+        </td>`;
+      tb.appendChild(tr);
+    });
+
+    tb.querySelectorAll('.copyBtn').forEach(b => {
+      b.addEventListener('click', () => {
+        const { ip, port, account, password } = b.dataset;
+        const text = `${ip}:${port}:${account}:${password}`;
+        navigator.clipboard.writeText(text).then(() => {
+          const old = b.textContent;
+          b.textContent = '已复制 ✓';
+          b.classList.add('text-emerald-600');
+          setTimeout(() => { b.textContent = old; b.classList.remove('text-emerald-600'); }, 1200);
+        });
+      });
+    });
+  }
+
+  $('rangeInfo').textContent = S.filtered.length
+    ? `显示第 ${start + 1} - ${Math.min(start + CONFIG.pageSize, S.filtered.length)} 条，共 ${S.filtered.length} 条`
+    : '共 0 条';
+  $('prevBtn').disabled = S.page <= 1;
+  $('nextBtn').disabled = start + CONFIG.pageSize >= S.filtered.length;
+}
+
+// ============================================================
+//  导出
+// ============================================================
+function exportCSV() {
+  const cols = ['ip', 'port', 'account', 'password', 'type', 'countryCode', 'location', 'expireDatetime', 'status'];
+  const lines = [cols.join(',')];
+  S.filtered.forEach(r => {
+    lines.push(cols.map(c => {
+      const v = r[c] == null ? '' : String(r[c]);
+      return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+    }).join(','));
+  });
+  const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `lyproxy-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ============================================================
+//  生命周期
+// ============================================================
+function showMsg(text, kind) {
+  const m = $('authMsg');
+  m.textContent = text;
+  m.className = 'text-sm px-3 py-2.5 rounded-lg ' + (kind === 'error' ? 'bg-rose-50 text-rose-700' : 'bg-blue-50 text-blue-700');
+}
+
+async function boot() {
+  try {
+    const info = await api('/getInfo');
+    if (info.code === 200 && info.user) {
+      $('authPanel').classList.add('hidden');
+      $('app').classList.remove('hidden');
+      $('userLine').textContent = `${info.user.userName || ''} · ${(info.roles || []).join('/')}`;
+      await refresh();
+      if (CONFIG.autoRefreshMs > 0) {
+        clearInterval(S.timer);
+        S.timer = setInterval(() => { if (!document.hidden) refresh(); }, CONFIG.autoRefreshMs);
+      }
+    } else {
+      throw new Error(info.msg || '鉴权失败');
+    }
+  } catch (e) {
+    showMsg('Token 无效或已过期：' + e.message, 'error');
+    localStorage.removeItem(CONFIG.storageKey);
+    S.token = '';
+  }
+}
+
+function logout() {
+  S.token = '';
+  localStorage.removeItem(CONFIG.storageKey);
+  clearInterval(S.timer);
+  $('app').classList.add('hidden');
+  $('authPanel').classList.remove('hidden');
+  loadCaptcha();
+}
+
+// 事件绑定
+$('captchaImg').addEventListener('click', loadCaptcha);
+$('loginBtn').addEventListener('click', doLogin);
+$('tokenBtn').addEventListener('click', useToken);
+$('refreshBtn').addEventListener('click', refresh);
+$('exportBtn').addEventListener('click', exportCSV);
+$('logoutBtn').addEventListener('click', logout);
+$('prevBtn').addEventListener('click', () => { S.page--; renderTable(); });
+$('nextBtn').addEventListener('click', () => { S.page++; renderTable(); });
+['search', 'fCountry', 'fType', 'fStatus', 'fSource'].forEach(id => {
+  $(id).addEventListener('input', applyFilter);
+  $(id).addEventListener('change', applyFilter);
+});
+$('clearFilter').addEventListener('click', () => {
+  $('search').value = ''; $('fCountry').value = ''; $('fType').value = '';
+  $('fStatus').value = ''; $('fSource').value = '';
+  applyFilter();
+});
+$('code').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+$('password').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+// 启动
+loadCaptcha();
+// API 地址可在登录面板覆盖（换代理时用）
+$('apiBase').addEventListener('change', e => {
+  const v = e.target.value.trim().replace(/\/+$/, '');
+  if (v) { S.apiBase = v; loadCaptcha(); }
+});
+const saved = localStorage.getItem(CONFIG.storageKey);
+if (saved) { S.token = saved; boot(); }
+</script>
+</body>
+</html>
