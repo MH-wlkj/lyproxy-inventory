@@ -86,10 +86,32 @@
 
       <div class="flex-1"></div>
 
-      <!-- 正常 IP 摘要（原统计卡里的「正常 IP」移到页首） -->
-      <div class="flex items-baseline gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-100 rounded-lg">
-        <span class="text-xs text-blue-600">正常 IP</span>
-        <span id="statTotal" class="text-lg font-bold text-blue-700 mono leading-none">0</span>
+      <!-- 统计摘要全部放在页首 -->
+      <div class="flex flex-wrap items-center gap-1.5">
+        <div class="flex items-baseline gap-1.5 px-2.5 py-1.5 bg-blue-50 border border-blue-100 rounded-lg">
+          <span class="text-xs text-blue-600">正常 IP</span>
+          <span id="statTotal" class="text-base font-bold text-blue-700 mono leading-none">0</span>
+        </div>
+        <div class="flex items-baseline gap-1.5 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+          <span class="text-xs text-slate-500">已停止</span>
+          <span id="statOnline" class="text-base font-bold text-slate-500 mono leading-none">0</span>
+        </div>
+        <div class="flex items-baseline gap-1.5 px-2.5 py-1.5 bg-rose-50 border border-rose-100 rounded-lg">
+          <span class="text-xs text-rose-500">7 天内到期</span>
+          <span id="statOffline" class="text-base font-bold text-rose-600 mono leading-none">0</span>
+        </div>
+        <div class="flex items-baseline gap-1.5 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+          <span class="text-xs text-slate-500">覆盖国家</span>
+          <span id="statCountry" class="text-base font-bold text-slate-700 mono leading-none">0</span>
+        </div>
+        <div class="flex items-baseline gap-1.5 px-2.5 py-1.5 bg-amber-50 border border-amber-100 rounded-lg">
+          <span class="text-xs text-amber-600">30 天内到期</span>
+          <span id="statExpiring" class="text-base font-bold text-amber-700 mono leading-none">0</span>
+        </div>
+        <div class="flex items-baseline gap-1.5 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+          <span class="text-xs text-slate-500">最近同步</span>
+          <span id="statSync" class="text-xs font-medium text-slate-600 mono">—</span>
+        </div>
       </div>
 
       <div class="flex items-center gap-2">
@@ -105,30 +127,6 @@
   </header>
 
   <main class="max-w-[1600px] mx-auto px-4 py-5">
-    <!-- 统计卡片 -->
-    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
-      <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <p class="text-xs text-slate-500 mb-1">已停止（已过滤）</p>
-        <p id="statOnline" class="text-2xl font-bold text-slate-400">0</p>
-      </div>
-      <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <p class="text-xs text-slate-500 mb-1">7 天内到期</p>
-        <p id="statOffline" class="text-2xl font-bold text-rose-500">0</p>
-      </div>
-      <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <p class="text-xs text-slate-500 mb-1">覆盖国家</p>
-        <p id="statCountry" class="text-2xl font-bold text-slate-900">0</p>
-      </div>
-      <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <p class="text-xs text-slate-500 mb-1">30 天内到期</p>
-        <p id="statExpiring" class="text-2xl font-bold text-amber-600">0</p>
-      </div>
-      <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <p class="text-xs text-slate-500 mb-1">最近同步</p>
-        <p id="statSync" class="text-sm font-medium text-slate-600 mt-1.5">—</p>
-      </div>
-    </div>
-
     <!-- 筛选条 -->
     <div class="bg-white rounded-xl border border-slate-200 p-4 mb-4">
       <div class="flex flex-wrap gap-3 items-end">
