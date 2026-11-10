@@ -101,6 +101,27 @@
   </header>
 
   <main class="max-w-[1600px] mx-auto px-4 py-5">
+    <!-- 账户资产条 -->
+    <div class="bg-white rounded-xl border border-slate-200 p-4 mb-3 flex flex-wrap items-center gap-x-8 gap-y-3">
+      <div>
+        <p class="text-xs text-slate-500">本站账户余额</p>
+        <p class="text-xl font-bold text-slate-900 mono">$<span id="walletBalance">—</span></p>
+      </div>
+      <div>
+        <p class="text-xs text-slate-500">累计充值</p>
+        <p class="text-xl font-bold text-slate-700 mono">$<span id="walletTotal">—</span></p>
+      </div>
+      <div>
+        <p class="text-xs text-slate-500">商户 ID</p>
+        <p class="text-sm font-medium text-slate-600 mono mt-1" id="walletMid">—</p>
+      </div>
+      <div class="flex-1"></div>
+      <div>
+        <p class="text-xs text-slate-500 mb-1">上游供应商余额（Ones / IPNux）</p>
+        <p id="upBalance" class="text-sm text-amber-600">当前角色无权读取</p>
+      </div>
+      <button id="rechargeBtn" class="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm rounded-lg transition">充值 ↗</button>
+    </div>
     <!-- 统计卡片 -->
     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
       <div class="bg-white rounded-xl border border-slate-200 p-4">
@@ -555,6 +576,7 @@ async function boot() {
       $('app').classList.remove('hidden');
       $('userLine').textContent = `${info.user.userName || ''} · ${(info.roles || []).join('/')}`;
       await refresh();
+      await loadWallet();
       if (CONFIG.autoRefreshMs > 0) {
         clearInterval(S.timer);
         S.timer = setInterval(() => { if (!document.hidden) refresh(); }, CONFIG.autoRefreshMs);
@@ -708,6 +730,36 @@ async function submitBuy() {
   }
 }
 
+// ============================================================
+//  账户资产 / 余额
+// ============================================================
+async function loadWallet() {
+  try {
+    const d = await api('/client/merchant/walletInfo');
+    if (d.code === 200 && d.data) {
+      S.merchantId = d.data.merchantId || null;
+      $('walletBalance').textContent = Number(d.data.balance || 0).toFixed(2);
+      $('walletTotal').textContent = Number(d.data.totalAmount || 0).toFixed(2);
+      $('walletMid').textContent = d.data.merchantId ?? '—';
+    }
+  } catch (e) {
+    console.warn('余额读取失败', e);
+    $('walletBalance').textContent = '—';
+  }
+  // 上游供应商余额：admin/代理商角色才有对应接口，客户角色固定 404/403
+  const up = await api('/admin/ones/balance').catch(() => null);
+  if (up && up.code === 200) {
+    const parts = [];
+    if (up.data && up.data.balance != null) parts.push('Ones $' + Number(up.data.balance).toFixed(2));
+    if (up.data && up.data.ipnuxBalance != null) parts.push('IPNux $' + Number(up.data.ipnuxBalance).toFixed(2));
+    $('upBalance').textContent = parts.join(' · ') || '已读取';
+    $('upBalance').className = 'text-sm text-emerald-600 font-medium';
+  } else {
+    $('upBalance').textContent = '当前角色无权读取（需管理员/代理商）';
+    $('upBalance').className = 'text-sm text-amber-600';
+  }
+}
+
 function toggleStopped() {
   const sel = $('fStatus');
   const showAll = sel.value === '1';   // 当前只显示正常 → 切成全部
@@ -730,6 +782,7 @@ $('captchaImg').addEventListener('click', loadCaptcha);
 $('loginBtn').addEventListener('click', doLogin);
 $('tokenBtn').addEventListener('click', useToken);
 $('refreshBtn').addEventListener('click', () => refresh());
+$('rechargeBtn').addEventListener('click', () => window.open('https://ly-proxy.com/client/merchant/walletRecharge', '_blank'));
 $('exportBtn').addEventListener('click', exportCSV);
 $('logoutBtn').addEventListener('click', logout);
 $('showStoppedBtn').addEventListener('click', toggleStopped);
