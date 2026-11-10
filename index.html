@@ -89,6 +89,11 @@
           <svg id="refreshIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
           <span>刷新</span>
         </button>
+        <button id="buyBtn" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm rounded-lg transition flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+          <span>购买 IP</span>
+        </button>
+        <button id="showStoppedBtn" class="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm rounded-lg transition">显示已停止</button>
         <button id="exportBtn" class="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm rounded-lg transition">导出 CSV</button>
         <button id="logoutBtn" class="px-3 py-2 text-slate-500 hover:text-slate-800 text-sm transition">退出</button>
       </div>
@@ -99,15 +104,15 @@
     <!-- 统计卡片 -->
     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
       <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <p class="text-xs text-slate-500 mb-1">总 IP 数</p>
+        <p class="text-xs text-slate-500 mb-1">正常 IP</p>
         <p id="statTotal" class="text-2xl font-bold text-slate-900">0</p>
       </div>
       <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <p class="text-xs text-slate-500 mb-1">在线</p>
-        <p id="statOnline" class="text-2xl font-bold text-emerald-600">0</p>
+        <p class="text-xs text-slate-500 mb-1">已停止（已过滤）</p>
+        <p id="statOnline" class="text-2xl font-bold text-slate-400">0</p>
       </div>
       <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <p class="text-xs text-slate-500 mb-1">离线/异常</p>
+        <p class="text-xs text-slate-500 mb-1">7 天内到期</p>
         <p id="statOffline" class="text-2xl font-bold text-rose-500">0</p>
       </div>
       <div class="bg-white rounded-xl border border-slate-200 p-4">
@@ -149,9 +154,9 @@
         <div>
           <label class="block text-xs text-slate-500 mb-1">状态</label>
           <select id="fStatus" class="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white min-w-[110px]">
+            <option value="1">仅正常（默认）</option>
             <option value="">全部</option>
-            <option value="1">正常</option>
-            <option value="2">已停止</option>
+            <option value="2">仅已停止</option>
           </select>
         </div>
         <div>
@@ -168,6 +173,10 @@
 
     <!-- 列表 -->
     <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+        <h2 class="font-medium text-slate-800">我的 IP</h2>
+        <span class="text-xs text-slate-400">默认只显示状态正常的 IP</span>
+      </div>
       <div class="overflow-auto max-h-[calc(100vh-360px)]">
         <table class="w-full text-sm">
           <thead class="sticky-head bg-slate-50 border-b border-slate-200">
@@ -198,6 +207,62 @@
   </main>
 </div>
 
+<!-- ============ 购买弹窗 ============ -->
+<div id="buyModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col">
+    <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+      <div>
+        <h2 class="font-bold text-slate-900">购买新 IP</h2>
+        <p class="text-xs text-slate-500 mt-0.5">从可用池中选择，提交后生成订单</p>
+      </div>
+      <button id="closeBuyBtn" class="text-slate-400 hover:text-slate-700 text-2xl leading-none">&times;</button>
+    </div>
+
+    <div class="px-6 py-3 border-b border-slate-200 flex flex-wrap gap-3 items-end bg-slate-50">
+      <div>
+        <label class="block text-xs text-slate-500 mb-1">地区</label>
+        <select id="buyRegion" class="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white min-w-[180px]">
+          <option value="">全部地区</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-slate-500 mb-1">购买天数</label>
+        <input id="buyDays" type="number" value="30" min="1" class="w-24 px-3 py-2 border border-slate-300 rounded-lg text-sm">
+      </div>
+      <button id="buyReloadBtn" class="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm rounded-lg">刷新池</button>
+      <button id="buyOfficialBtn" class="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm rounded-lg">去官网购买 ↗</button>
+      <div class="flex-1"></div>
+      <div class="text-sm text-slate-600">
+        已选 <span id="buySelCount" class="font-bold text-blue-600">0</span> 个
+      </div>
+    </div>
+
+    <div class="flex-1 overflow-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 border-b border-slate-200 sticky top-0">
+          <tr class="text-left text-xs text-slate-500">
+            <th class="px-3 py-2.5 w-10"></th>
+            <th class="px-3 py-2.5 font-medium">IP</th>
+            <th class="px-3 py-2.5 font-medium">地区</th>
+            <th class="px-3 py-2.5 font-medium">类型</th>
+            <th class="px-3 py-2.5 font-medium">价格</th>
+          </tr>
+        </thead>
+        <tbody id="buyTbody"></tbody>
+      </table>
+    </div>
+
+    <div class="px-6 py-4 border-t border-slate-200 flex items-center justify-between">
+      <span id="buyRange" class="text-xs text-slate-500"></span>
+      <div class="flex gap-2">
+        <button id="buyPrevBtn" class="px-3 py-1.5 border border-slate-300 rounded-lg text-sm hover:bg-slate-50">上一页</button>
+        <button id="buyNextBtn" class="px-3 py-1.5 border border-slate-300 rounded-lg text-sm hover:bg-slate-50">下一页</button>
+        <button id="submitBuyBtn" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm rounded-lg font-medium disabled:opacity-40 disabled:cursor-not-allowed transition" disabled>确认购买</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 // ============================================================
 //  配置
@@ -221,6 +286,8 @@ const S = {
   captchaUuid: '',
   apiBase: CONFIG.apiBase,
   timer: null,
+  stoppedCount: 0,
+  merchantId: null,
 };
 
 const $ = id => document.getElementById(id);
@@ -292,11 +359,13 @@ async function useToken() {
 // ============================================================
 //  数据
 // ============================================================
-async function fetchAll() {
+async function fetchAll(includeStopped) {
   const all = [];
   let page = 1;
   while (page <= 30) {
-    const d = await api(`/admin/ip/merchant/list?pageNum=${page}&pageSize=${CONFIG.fetchPageSize}`);
+    // 不带 includeStopped 时服务端按 status=1 过滤，只要正常在线的
+    const q = includeStopped ? '' : '&status=1';
+    const d = await api(`/admin/ip/merchant/list?pageNum=${page}&pageSize=${CONFIG.fetchPageSize}${q}`);
     if (!d.rows || !d.rows.length) break;
     all.push(...d.rows);
     const total = d.total || 0;
@@ -307,15 +376,18 @@ async function fetchAll() {
   return all;
 }
 
-async function refresh() {
+async function refresh(includeStopped) {
   const icon = $('refreshIcon');
   icon.classList.add('animate-spin');
   try {
-    const rows = await fetchAll();
+    const wantAll = includeStopped === true;
+    const rows = await fetchAll(wantAll);
     S.rows = rows;
+    // 服务端已过滤；这里兜一层，防止后端忽略 status 参数
+    if (!wantAll) S.rows = S.rows.filter(r => String(r.status) === '1');
     render();
-    setSyncText(new Date().toLocaleTimeString('zh-CN'));
-    $('statSync').textContent = new Date().toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit'});
+    const now = new Date().toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit'});
+    $('statSync').textContent = now;
   } catch (e) {
     console.error(e);
     alert('刷新失败：' + e.message);
@@ -358,19 +430,22 @@ function applyFilter() {
 function render() {
   // 统计
   const total = S.rows.length;
-  const online = S.rows.filter(r => String(r.status) === '1').length;
-  const countries = new Set(S.rows.map(r => r.countryCode).filter(Boolean));
   const now = Date.now();
-  const expiring = S.rows.filter(r => {
+  const expiring7 = S.rows.filter(r => {
+    const t = Date.parse((r.expireDatetime || '').replace(' ', 'T'));
+    return t && t > now && t - now < 7 * 864e5;
+  }).length;
+  const expiring30 = S.rows.filter(r => {
     const t = Date.parse((r.expireDatetime || '').replace(' ', 'T'));
     return t && t > now && t - now < 30 * 864e5;
   }).length;
+  const countries = new Set(S.rows.map(r => r.countryCode).filter(Boolean));
 
   $('statTotal').textContent = total;
-  $('statOnline').textContent = online;
-  $('statOffline').textContent = total - online;
+  $('statOnline').textContent = S.stoppedCount || '—';
+  $('statOffline').textContent = expiring7;
   $('statCountry').textContent = countries.size;
-  $('statExpiring').textContent = expiring;
+  $('statExpiring').textContent = expiring30;
 
   // 国家下拉
   const sel = $('fCountry');
@@ -503,13 +578,169 @@ function logout() {
   loadCaptcha();
 }
 
+// ============================================================
+//  购买新 IP
+// ============================================================
+const BUY = {
+  rows: [],          // 可购买 IP 池
+  selected: new Set(),
+  page: 1,
+  pageSize: 20,
+  country: '',
+  loading: false,
+};
+
+async function openBuy() {
+  $('buyModal').classList.remove('hidden');
+  BUY.selected.clear();
+  BUY.page = 1;
+  $('buyDays').value = '30';
+  await loadBuyRegions();
+}
+
+function closeBuy() { $('buyModal').classList.add('hidden'); }
+
+async function loadBuyRegions() {
+  // 池子列表 = 可购买的国家/地区货源
+  try {
+    const d = await api('/admin/ip/pool/regionalAvailableIps?pageNum=1&pageSize=200');
+    if (d.code === 200) {
+      const rows = d.rows || [];
+      const sel = $('buyRegion');
+      sel.innerHTML = '<option value="">全部地区</option>';
+      rows.forEach(r => {
+        const o = document.createElement('option');
+        o.value = r.id ?? r.poolId ?? r.countryCode ?? '';
+        o.textContent = `${r.countryCode || r.country || ''} ${r.location || r.originalName || ''} (${r.available ?? r.count ?? '?'})`;
+        sel.appendChild(o);
+      });
+    }
+  } catch (e) { console.warn('地区加载失败', e); }
+  await loadBuyIps();
+}
+
+async function loadBuyIps() {
+  BUY.loading = true;
+  $('buyTbody').innerHTML = `<tr><td colspan="5" class="px-4 py-10 text-center text-slate-400">加载中...</td></tr>`;
+  try {
+    const params = new URLSearchParams({
+      pageNum: BUY.page, pageSize: BUY.pageSize,
+    });
+    if (BUY.country) params.set('countryCode', BUY.country);
+    const d = await api('/admin/ip/pool/regionalAvailableIps?' + params);
+    if (d.code !== 200) throw new Error(d.msg || '读取失败');
+    BUY.rows = d.rows || [];
+    renderBuyTable(d.total || BUY.rows.length);
+  } catch (e) {
+    $('buyTbody').innerHTML = `<tr><td colspan="5" class="px-4 py-10 text-center text-rose-500">${esc(e.message)}</td></tr>`;
+  } finally {
+    BUY.loading = false;
+  }
+}
+
+function renderBuyTable(total) {
+  const tb = $('buyTbody');
+  tb.innerHTML = '';
+  if (!BUY.rows.length) {
+    tb.innerHTML = `<tr><td colspan="5" class="px-4 py-10 text-center text-slate-400">该条件暂无可购买 IP</td></tr>`;
+  } else {
+    BUY.rows.forEach(r => {
+      const ip = r.ip || '';
+      const tr = document.createElement('tr');
+      tr.className = 'border-b border-slate-100';
+      tr.innerHTML = `
+        <td class="px-3 py-2"><input type="checkbox" class="buyChk rounded" data-ip="${esc(ip)}" ${BUY.selected.has(ip) ? 'checked' : ''}></td>
+        <td class="px-3 py-2 mono">${esc(ip)}</td>
+        <td class="px-3 py-2">${esc(r.countryCode || r.country || '—')} ${esc(r.location || '')}</td>
+        <td class="px-3 py-2">${esc(r.typeName || r.type || '—')}</td>
+        <td class="px-3 py-2 text-xs text-slate-500">${esc(r.price || r.pricePerMonth || '—')}</td>`;
+      tb.appendChild(tr);
+    });
+    tb.querySelectorAll('.buyChk').forEach(c => {
+      c.addEventListener('change', () => {
+        if (c.checked) BUY.selected.add(c.dataset.ip); else BUY.selected.delete(c.dataset.ip);
+        updateBuyCount();
+      });
+    });
+  }
+  $('buyRange').textContent = `共 ${total} 条可选`;
+  updateBuyCount();
+}
+
+function updateBuyCount() {
+  $('buySelCount').textContent = BUY.selected.size;
+  $('submitBuyBtn').disabled = BUY.selected.size === 0;
+}
+
+async function submitBuy() {
+  const days = parseInt($('buyDays').value) || 30;
+  const ips = [...BUY.selected];
+  if (!ips.length) return alert('请先勾选 IP');
+
+  const est = (days / 30 * ips.length).toFixed(2);
+  if (!confirm(`确认购买 ${ips.length} 个 IP，周期 ${days} 天？\n约 ${est} 个计费单位，提交后从余额扣款。`)) return;
+
+  $('submitBuyBtn').disabled = true;
+  $('submitBuyBtn').textContent = '提交中...';
+  try {
+    const d = await api('/admin/order/addStatic', {
+      method: 'POST',
+      body: JSON.stringify({ days, ips, ipPoolIds: BUY.poolIds || {}, merchantId: S.merchantId || null }),
+    });
+    if (d.code === 200) {
+      alert('下单成功，稍后刷新列表即可看到新 IP');
+      closeBuy();
+      refresh();
+    } else {
+      // 403 = 账号没有下单权限，引导去官网
+      if (d.code === 403) {
+        const go = confirm('当前账号没有下单权限（需管理员或代理商角色）。\n\n是否跳转到官网控制台手动购买？');
+        if (go) window.open('https://ly-proxy.com/client/ip/static?tab=buy', '_blank');
+        return;
+      }
+      alert('下单失败：' + (d.msg || '未知错误'));
+    }
+  } catch (e) {
+    alert('下单失败：' + e.message);
+  } finally {
+    $('submitBuyBtn').disabled = false;
+    $('submitBuyBtn').textContent = '确认购买';
+  }
+}
+
+function toggleStopped() {
+  const sel = $('fStatus');
+  const showAll = sel.value === '1';   // 当前只显示正常 → 切成全部
+  sel.value = showAll ? '' : '1';
+  const btn = $('showStoppedBtn');
+  btn.textContent = showAll ? '仅看正常' : '显示已停止';
+  btn.className = showAll
+    ? 'px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm rounded-lg transition'
+    : 'px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm rounded-lg transition';
+  if (showAll) {
+    // 需要全量数据才看得到已停止的，重新拉一次不带 status 的全量
+    refresh(true);
+  } else {
+    render();
+  }
+}
+
 // 事件绑定
 $('captchaImg').addEventListener('click', loadCaptcha);
 $('loginBtn').addEventListener('click', doLogin);
 $('tokenBtn').addEventListener('click', useToken);
-$('refreshBtn').addEventListener('click', refresh);
+$('refreshBtn').addEventListener('click', () => refresh());
 $('exportBtn').addEventListener('click', exportCSV);
 $('logoutBtn').addEventListener('click', logout);
+$('showStoppedBtn').addEventListener('click', toggleStopped);
+$('buyBtn').addEventListener('click', openBuy);
+$('closeBuyBtn').addEventListener('click', closeBuy);
+$('buyReloadBtn').addEventListener('click', loadBuyIps);
+$('buyOfficialBtn').addEventListener('click', () => window.open('https://ly-proxy.com/client/ip/static?tab=buy', '_blank'));
+$('buyRegion').addEventListener('change', () => { BUY.country = $('buyRegion').value; BUY.page = 1; loadBuyIps(); });
+$('buyPrevBtn').addEventListener('click', () => { if (BUY.page > 1) { BUY.page--; loadBuyIps(); } });
+$('buyNextBtn').addEventListener('click', () => { BUY.page++; loadBuyIps(); });
+$('submitBuyBtn').addEventListener('click', submitBuy);
 $('prevBtn').addEventListener('click', () => { S.page--; renderTable(); });
 $('nextBtn').addEventListener('click', () => { S.page++; renderTable(); });
 ['search', 'fCountry', 'fType', 'fStatus', 'fSource'].forEach(id => {
@@ -518,7 +749,7 @@ $('nextBtn').addEventListener('click', () => { S.page++; renderTable(); });
 });
 $('clearFilter').addEventListener('click', () => {
   $('search').value = ''; $('fCountry').value = ''; $('fType').value = '';
-  $('fStatus').value = ''; $('fSource').value = '';
+  $('fStatus').value = '1'; $('fSource').value = '';
   applyFilter();
 });
 $('code').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
