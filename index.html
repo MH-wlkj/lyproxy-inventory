@@ -202,14 +202,12 @@
         <table class="w-full text-sm">
           <thead class="sticky-head bg-slate-50 border-b border-slate-200">
             <tr class="text-left text-xs text-slate-500 uppercase tracking-wide">
-              <th class="px-4 py-3 font-medium">IP</th>
-              <th class="px-4 py-3 font-medium">端口</th>
-              <th class="px-4 py-3 font-medium">账号</th>
-              <th class="px-4 py-3 font-medium">密码</th>
+              <th class="px-4 py-3 font-medium">代理（IP:端口:账号:密码）</th>
               <th class="px-4 py-3 font-medium">地区</th>
               <th class="px-4 py-3 font-medium">品类</th>
               <th class="px-4 py-3 font-medium">来源</th>
               <th class="px-4 py-3 font-medium">到期</th>
+              <th class="px-4 py-3 font-medium">剩余天数</th>
               <th class="px-4 py-3 font-medium">状态</th>
               <th class="px-4 py-3 font-medium text-right">操作</th>
             </tr>
@@ -292,7 +290,7 @@ const CONFIG = {
   apiBase: 'https://ly-proxy.com/api/proxy',
   pageSize: 100,          // 前端每页显示
   fetchPageSize: 1000,    // 后端单次拉取上限
-  autoRefreshMs: 60000,   // 自动刷新间隔（0 = 关闭）
+  autoRefreshMs: 0,       // 自动刷新已关闭，只能手动点「刷新」
   storageKey: 'lyproxy_token',
 };
 
@@ -425,6 +423,27 @@ function setSyncText(t) { $('statSync').textContent = t; }
 const TYPE_MAP = { '1': 'ISP住宅/原生', '0': '机房', '3': '双ISP' };
 const STATUS_MAP = { '1': ['正常', 'text-emerald-700 bg-emerald-50'], '2': ['已停止', 'text-rose-700 bg-rose-50'], '0': ['异常', 'text-amber-700 bg-amber-50'] };
 
+// 地区中文名 + 国旗 emoji（flag 由两位国家码用 Regional Indicator 拼出，无需图片资源）
+const CC_CN = {
+  AE: '阿联酋', AU: '澳大利亚', BE: '比利时', BR: '巴西', CA: '加拿大', CH: '瑞士', CL: '智利',
+  CN: '中国', CZ: '捷克', DE: '德国', DK: '丹麦', EE: '爱沙尼亚', ES: '西班牙', FI: '芬兰',
+  FR: '法国', GB: '英国', GR: '希腊', HK: '中国香港', HR: '克罗地亚', HU: '匈牙利', ID: '印度尼西亚',
+  IE: '爱尔兰', IL: '以色列', IN: '印度', IT: '意大利', JP: '日本', KR: '韩国', LT: '立陶宛',
+  LU: '卢森堡', LV: '拉脱维亚', MX: '墨西哥', MY: '马来西亚', NG: '尼日利亚', NL: '荷兰',
+  NO: '挪威', NZ: '新西兰', PH: '菲律宾', PL: '波兰', PT: '葡萄牙', RO: '罗马尼亚', RS: '塞尔维亚',
+  RU: '俄罗斯', SA: '沙特阿拉伯', SE: '瑞典', SG: '新加坡', SK: '斯洛伐克', TH: '泰国',
+  TR: '土耳其', TW: '中国台湾', UA: '乌克兰', US: '美国', VN: '越南', ZA: '南非', XX: '未知',
+};
+function flagOf(cc) {
+  if (!cc || cc.length !== 2 || cc === 'XX') return '🏳️';
+  const base = 0x1F1E6;
+  return String.fromCodePoint(base + cc.charCodeAt(0) - 65, base + cc.charCodeAt(1) - 65);
+}
+function regionLabel(cc, loc) {
+  const cn = CC_CN[cc] || cc || '';
+  return { flag: flagOf(cc), cn, loc: loc || '' };
+}
+
 function applyFilter() {
   const q = $('search').value.trim().toLowerCase();
   const fc = $('fCountry').value;
@@ -445,6 +464,12 @@ function applyFilter() {
     return true;
   });
   S.page = 1;
+  // 排序：到期时间最晚的排第一（无到期时间的排最后）
+  S.filtered.sort((a, b) => {
+    const ta = Date.parse((a.expireDatetime || '').replace(' ', 'T')) || 0;
+    const tb = Date.parse((b.expireDatetime || '').replace(' ', 'T')) || 0;
+    return tb - ta;
+  });
   renderTable();
 }
 
@@ -476,7 +501,8 @@ function render() {
   S.rows.forEach(r => { if (r.countryCode) ccCount[r.countryCode] = (ccCount[r.countryCode] || 0) + 1; });
   Object.entries(ccCount).sort((a, b) => b[1] - a[1]).forEach(([cc, n]) => {
     const o = document.createElement('option');
-    o.value = cc; o.textContent = `${cc} (${n})`;
+    o.value = cc;
+    o.textContent = `${flagOf(cc)} ${CC_CN[cc] || cc} (${n})`;
     sel.appendChild(o);
   });
   sel.value = cur;
@@ -491,7 +517,7 @@ function renderTable() {
   const pageRows = S.filtered.slice(start, start + CONFIG.pageSize);
 
   if (!pageRows.length) {
-    tb.appendChild(el('tr', '', `<td colspan="10" class="px-4 py-12 text-center text-slate-400">没有匹配的记录</td>`));
+    tb.appendChild(el('tr', '', `<td colspan="9" class="px-4 py-12 text-center text-slate-400">没有匹配的记录</td>`));
   } else {
     pageRows.forEach(r => {
       const tr = document.createElement('tr');
@@ -502,26 +528,36 @@ function renderTable() {
       const [stName, stCls] = STATUS_MAP[String(r.status)] || ['未知', 'bg-slate-100 text-slate-600'];
       const exp = (r.expireDatetime || '').slice(0, 10);
 
+      // 剩余天数
+      const expTs = Date.parse((r.expireDatetime || '').replace(' ', 'T'));
+      let daysLeft = null, daysTxt = '—', daysCls = 'text-slate-400';
+      if (expTs) {
+        daysLeft = Math.ceil((expTs - Date.now()) / 864e5);
+        if (daysLeft > 7) { daysTxt = daysLeft + ' 天'; daysCls = 'text-emerald-600 font-semibold'; }
+        else if (daysLeft >= 0) { daysTxt = daysLeft + ' 天'; daysCls = 'text-orange-500 font-semibold'; }
+        else { daysTxt = '已过期 ' + Math.abs(daysLeft) + ' 天'; daysCls = 'text-rose-600 font-semibold'; }
+      }
+
+      const rg = regionLabel(r.countryCode, r.location);
+      const proxyStr = `${r.ip}:${r.port}:${r.account}:${r.password}`;
+
       tr.innerHTML = `
-        <td class="px-4 py-2.5 mono text-slate-900">${esc(r.ip)}</td>
-        <td class="px-4 py-2.5 mono text-slate-600">${esc(r.port)}</td>
-        <td class="px-4 py-2.5 mono text-slate-600">${esc(r.account)}</td>
-        <td class="px-4 py-2.5 mono text-slate-600">${esc(r.password)}</td>
-        <td class="px-4 py-2.5 text-slate-600">${esc(r.countryCode)} ${esc(r.location || '')}</td>
+        <td class="px-4 py-2.5 mono text-slate-900 whitespace-nowrap">${esc(proxyStr)}</td>
+        <td class="px-4 py-2.5 text-slate-600 whitespace-nowrap"><span class="mr-1">${rg.flag}</span>${esc(rg.cn)}${rg.loc ? ' <span class="text-slate-400 text-xs">' + esc(rg.loc) + '</span>' : ''}</td>
         <td class="px-4 py-2.5 text-slate-600">${esc(typeName)}</td>
         <td class="px-4 py-2.5"><span class="px-2 py-0.5 rounded text-xs ${srcCls}">${src}</span></td>
-        <td class="px-4 py-2.5 text-slate-500 text-xs">${esc(exp)}</td>
+        <td class="px-4 py-2.5 text-slate-500 text-xs whitespace-nowrap">${esc(exp)}</td>
+        <td class="px-4 py-2.5 text-xs whitespace-nowrap ${daysCls}">${daysTxt}</td>
         <td class="px-4 py-2.5"><span class="px-2 py-0.5 rounded text-xs ${stCls}">${stName}</span></td>
         <td class="px-4 py-2.5 text-right whitespace-nowrap">
-          <button class="copyBtn text-blue-600 hover:text-blue-800 text-xs font-medium" data-ip="${esc(r.ip)}" data-port="${esc(r.port)}" data-account="${esc(r.account)}" data-password="${esc(r.password)}">复制</button>
+          <button class="copyBtn text-blue-600 hover:text-blue-800 text-xs font-medium" data-proxy="${esc(proxyStr)}">复制</button>
         </td>`;
       tb.appendChild(tr);
     });
 
     tb.querySelectorAll('.copyBtn').forEach(b => {
       b.addEventListener('click', () => {
-        const { ip, port, account, password } = b.dataset;
-        const text = `${ip}:${port}:${account}:${password}`;
+        const text = b.dataset.proxy;
         navigator.clipboard.writeText(text).then(() => {
           const old = b.textContent;
           b.textContent = '已复制 ✓';
@@ -543,13 +579,25 @@ function renderTable() {
 //  导出
 // ============================================================
 function exportCSV() {
-  const cols = ['ip', 'port', 'account', 'password', 'type', 'countryCode', 'location', 'expireDatetime', 'status'];
-  const lines = [cols.join(',')];
+  const head = ['代理(IP:端口:账号:密码)', '地区', '城市/机房', '品类', '来源', '到期', '剩余天数', '状态'];
+  const lines = [head.join(',')];
+  const q = v => {
+    const s = v == null ? '' : String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
   S.filtered.forEach(r => {
-    lines.push(cols.map(c => {
-      const v = r[c] == null ? '' : String(r[c]);
-      return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
-    }).join(','));
+    const expTs = Date.parse((r.expireDatetime || '').replace(' ', 'T'));
+    const dl = expTs ? Math.ceil((expTs - Date.now()) / 864e5) : '';
+    lines.push([
+      `${r.ip}:${r.port}:${r.account}:${r.password}`,
+      CC_CN[r.countryCode] || r.countryCode || '',
+      r.location || '',
+      TYPE_MAP[String(r.type)] || (r.type == null ? '' : 'type=' + r.type),
+      r.ipnuxProxyId ? 'IPNux' : '本地',
+      (r.expireDatetime || '').slice(0, 10),
+      dl,
+      String(r.status) === '1' ? '正常' : (String(r.status) === '2' ? '已停止' : '异常'),
+    ].map(q).join(','));
   });
   const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
@@ -577,10 +625,7 @@ async function boot() {
       $('userLine').textContent = `${info.user.userName || ''} · ${(info.roles || []).join('/')}`;
       await refresh();
       await loadWallet();
-      if (CONFIG.autoRefreshMs > 0) {
-        clearInterval(S.timer);
-        S.timer = setInterval(() => { if (!document.hidden) refresh(); }, CONFIG.autoRefreshMs);
-      }
+      // 自动刷新已关闭：只允许手动点「刷新」按钮
     } else {
       throw new Error(info.msg || '鉴权失败');
     }
