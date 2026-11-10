@@ -86,14 +86,16 @@
 
       <div class="flex-1"></div>
 
+      <!-- 正常 IP 摘要（原统计卡里的「正常 IP」移到页首） -->
+      <div class="flex items-baseline gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-100 rounded-lg">
+        <span class="text-xs text-blue-600">正常 IP</span>
+        <span id="statTotal" class="text-lg font-bold text-blue-700 mono leading-none">0</span>
+      </div>
+
       <div class="flex items-center gap-2">
         <button id="refreshBtn" class="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition flex items-center gap-1.5">
           <svg id="refreshIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
           <span>刷新</span>
-        </button>
-        <button id="buyBtn" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm rounded-lg transition flex items-center gap-1.5">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
-          <span>购买 IP</span>
         </button>
         <button id="showStoppedBtn" class="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm rounded-lg transition">显示已停止</button>
         <button id="exportBtn" class="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm rounded-lg transition">导出 CSV</button>
@@ -104,11 +106,7 @@
 
   <main class="max-w-[1600px] mx-auto px-4 py-5">
     <!-- 统计卡片 -->
-    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
-      <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <p class="text-xs text-slate-500 mb-1">正常 IP</p>
-        <p id="statTotal" class="text-2xl font-bold text-slate-900">0</p>
-      </div>
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
       <div class="bg-white rounded-xl border border-slate-200 p-4">
         <p class="text-xs text-slate-500 mb-1">已停止（已过滤）</p>
         <p id="statOnline" class="text-2xl font-bold text-slate-400">0</p>
@@ -183,6 +181,7 @@
         <table class="w-full text-sm">
           <thead class="sticky-head bg-slate-50 border-b border-slate-200">
             <tr class="text-left text-xs text-slate-500 uppercase tracking-wide">
+              <th class="px-3 py-3 w-10"><input id="checkAll" type="checkbox" class="cursor-pointer" title="全选本页"></th>
               <th class="px-4 py-3 font-medium">代理（IP:端口:账号:密码）</th>
               <th class="px-4 py-3 font-medium">地区</th>
               <th class="px-4 py-3 font-medium">品类</th>
@@ -201,7 +200,14 @@
         </table>
       </div>
       <div class="px-4 py-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 text-sm">
-        <span id="rangeInfo" class="text-slate-500"></span>
+        <div class="flex flex-wrap items-center gap-3">
+          <span id="rangeInfo" class="text-slate-500"></span>
+          <span id="selInfo" class="text-slate-500 hidden">
+            已选 <span id="selCount" class="font-bold text-blue-600">0</span> 条
+            <button id="copySelBtn" class="ml-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">批量复制</button>
+            <button id="clearSelBtn" class="ml-1 px-3 py-1.5 border border-slate-300 rounded-lg hover:bg-slate-50 transition">清空选择</button>
+          </span>
+        </div>
         <div class="flex flex-wrap items-center gap-2">
           <span class="text-slate-500">每页</span>
           <select id="pageSizeSel" class="px-2 py-1.5 border border-slate-300 rounded-lg text-sm bg-white">
@@ -305,6 +311,7 @@ const S = {
   sortMode: 'expire',   // 'expire' = 按到期时间倒序 | 'days' = 按剩余天数排
   sortDir: 'desc',      // 'desc' = 剩余天数多的在前 | 'asc' = 少的在前
   pageSize: 100,        // 每页条数，可在分页栏切换 20/50/100
+  selected: new Set(),  // 多选：存 id（无 id 时退回 proxyStr）
 };
 
 const $ = id => document.getElementById(id);
@@ -525,8 +532,7 @@ function renderTable() {
   const totalPages = Math.max(1, Math.ceil(S.filtered.length / PS));
 
   if (!pageRows.length) {
-    tb.appendChild(el('tr', '', `<td colspan="9" class="px-4 py-12 text-center text-slate-400">没有匹配的记录</td>`));
-  } else {
+    tb.appendChild(el('tr', '', `<td colspan="9" class="px-4 py-12 text-center text-slate-400">没有匹配的记录</td>`));  } else {
     pageRows.forEach(r => {
       const tr = document.createElement('tr');
       tr.className = 'border-b border-slate-100 transition';
@@ -548,8 +554,11 @@ function renderTable() {
 
       const rg = regionLabel(r.countryCode, r.location);
       const proxyStr = `${r.ip}:${r.port}:${r.account}:${r.password}`;
+      const rowKey = r.id != null ? 'id:' + r.id : 'p:' + proxyStr;
+      const checked = S.selected.has(rowKey) ? 'checked' : '';
 
       tr.innerHTML = `
+        <td class="px-3 py-2.5"><input type="checkbox" class="rowCheck cursor-pointer" data-key="${esc(rowKey)}" ${checked}></td>
         <td class="px-4 py-2.5 mono text-slate-900 whitespace-nowrap">${esc(proxyStr)}</td>
         <td class="px-4 py-2.5 text-slate-600 whitespace-nowrap"><span class="mr-1 align-middle">${rg.flag}</span>${esc(rg.cn)}${rg.loc ? ' <span class="text-slate-400 text-xs">' + esc(rg.loc) + '</span>' : ''}</td>
         <td class="px-4 py-2.5 text-slate-600">${esc(typeName)}</td>
@@ -566,15 +575,25 @@ function renderTable() {
     tb.querySelectorAll('.copyBtn').forEach(b => {
       b.addEventListener('click', () => {
         const text = b.dataset.proxy;
-        navigator.clipboard.writeText(text).then(() => {
-          const old = b.textContent;
-          b.textContent = '已复制 ✓';
-          b.classList.add('text-emerald-600');
-          setTimeout(() => { b.textContent = old; b.classList.remove('text-emerald-600'); }, 1200);
-        });
+        copyText(text);
+        const old = b.textContent;
+        b.textContent = '已复制 ✓';
+        b.classList.add('text-emerald-600');
+        setTimeout(() => { b.textContent = old; b.classList.remove('text-emerald-600'); }, 1200);
+      });
+    });
+
+    // 行内多选
+    tb.querySelectorAll('.rowCheck').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const k = cb.dataset.key;
+        if (cb.checked) S.selected.add(k); else S.selected.delete(k);
+        updateSelUI(pageRows);
       });
     });
   }
+
+  updateSelUI(pageRows);
 
   $('rangeInfo').textContent = S.filtered.length
     ? `显示第 ${start + 1} - ${Math.min(start + PS, S.filtered.length)} 条，共 ${S.filtered.length} 条`
@@ -582,6 +601,78 @@ function renderTable() {
   $('pageNow').textContent = `${S.page} / ${totalPages}`;
   $('prevBtn').disabled = S.page <= 1;
   $('nextBtn').disabled = S.page >= totalPages;
+}
+
+// ============================================================
+//  多选 / 批量复制
+// ============================================================
+function rowKeyOf(r) {
+  return r.id != null ? 'id:' + r.id : 'p:' + `${r.ip}:${r.port}:${r.account}:${r.password}`;
+}
+function proxyOf(r) {
+  return `${r.ip}:${r.port}:${r.account}:${r.password}`;
+}
+function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
+}
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch (e) { console.warn(e); }
+  document.body.removeChild(ta);
+}
+
+// 更新「已选 N 条」与全选框的选中态
+function updateSelUI(pageRows) {
+  const n = S.selected.size;
+  $('selCount').textContent = n;
+  $('selInfo').className = n > 0
+    ? 'text-slate-500'
+    : 'text-slate-500 hidden';
+  const rows = pageRows || S.filtered.slice((S.page - 1) * (S.pageSize || 100), S.page * (S.pageSize || 100));
+  const allChecked = rows.length > 0 && rows.every(r => S.selected.has(rowKeyOf(r)));
+  const someChecked = rows.some(r => S.selected.has(rowKeyOf(r)));
+  const ca = $('checkAll');
+  ca.checked = allChecked;
+  ca.indeterminate = !allChecked && someChecked;
+}
+
+// 全选/取消全选当前页
+function toggleCheckAll(checked) {
+  const PS = S.pageSize || CONFIG.pageSize;
+  const rows = S.filtered.slice((S.page - 1) * PS, S.page * PS);
+  rows.forEach(r => {
+    const k = rowKeyOf(r);
+    if (checked) S.selected.add(k); else S.selected.delete(k);
+  });
+  renderTable();
+}
+
+// 批量复制：按当前排序顺序输出，每行 ip:port:account:password
+function copySelected() {
+  if (!S.selected.size) return;
+  const lines = S.filtered
+    .filter(r => S.selected.has(rowKeyOf(r)))
+    .map(proxyOf);
+  // 若选中项有落在筛选结果之外的（改过筛选），按 S.rows 兜底补齐
+  if (lines.length < S.selected.size) {
+    S.rows.forEach(r => {
+      if (S.selected.has(rowKeyOf(r)) && !lines.includes(proxyOf(r))) lines.push(proxyOf(r));
+    });
+  }
+  copyText(lines.join('\n'));
+  const btn = $('copySelBtn');
+  const old = btn.textContent;
+  btn.textContent = `已复制 ${lines.length} 条 ✓`;
+  setTimeout(() => { btn.textContent = old; }, 1600);
 }
 
 // ============================================================
@@ -822,7 +913,10 @@ $('refreshBtn').addEventListener('click', () => refresh());
 $('exportBtn').addEventListener('click', exportCSV);
 $('logoutBtn').addEventListener('click', logout);
 $('showStoppedBtn').addEventListener('click', toggleStopped);
-$('buyBtn').addEventListener('click', openBuy);
+// 多选相关
+$('checkAll').addEventListener('change', e => toggleCheckAll(e.target.checked));
+$('copySelBtn').addEventListener('click', copySelected);
+$('clearSelBtn').addEventListener('click', () => { S.selected.clear(); renderTable(); });
 $('closeBuyBtn').addEventListener('click', closeBuy);
 $('buyReloadBtn').addEventListener('click', loadBuyIps);
 $('buyOfficialBtn').addEventListener('click', () => window.open('https://ly-proxy.com/client/ip/static?tab=buy', '_blank'));
