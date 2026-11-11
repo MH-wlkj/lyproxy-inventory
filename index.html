@@ -184,7 +184,7 @@
               <th class="px-4 py-3 font-medium">地区</th>
               <th class="px-4 py-3 font-medium">品类</th>
               <th class="px-4 py-3 font-medium">来源</th>
-              <th class="px-4 py-3 font-medium">到期</th>
+              <th class="px-4 py-3 font-medium">开通 / 到期</th>
               <th class="px-4 py-3 font-medium whitespace-nowrap">
                 <button id="daysSortBtn" class="inline-flex items-center gap-1 hover:text-slate-800 transition" title="切换剩余天数排序">
                   剩余天数<span id="daysSortIcon" class="text-slate-400">▼</span>
@@ -540,6 +540,18 @@ function renderTable() {
       const [stName, stCls] = STATUS_MAP[String(r.status)] || ['未知', 'bg-slate-100 text-slate-600'];
       const exp = (r.expireDatetime || '').slice(0, 10);
 
+      // 开通时间：subscribeDatetime 全为空；effectiveDatetime = createTime（5260/6064 完全相同），
+      // 用它作为开通时间，秒级差异说明是下单后即时生效。
+      const openRaw = r.subscribeDatetime || r.effectiveDatetime || r.createTime || '';
+      const openSrc = r.subscribeDatetime ? '开通' : (r.effectiveDatetime ? '开通' : (r.createTime ? '创建' : ''));
+      const fmtMin = s => {
+        if (!s) return '';
+        const t = String(s).replace('T', ' ').replace(/\.\d+$/, '');
+        return t.length >= 16 ? t.slice(0, 16) : t;
+      };
+      const openTxt = fmtMin(openRaw);
+      const expTxt = fmtMin(r.expireDatetime);
+
       // 剩余天数
       const expTs = Date.parse((r.expireDatetime || '').replace(' ', 'T'));
       let daysLeft = null, daysTxt = '—', daysCls = 'text-slate-400';
@@ -561,7 +573,12 @@ function renderTable() {
         <td class="px-4 py-2.5 text-slate-600 whitespace-nowrap"><span class="mr-1 align-middle">${rg.flag}</span>${esc(rg.cn)}${rg.loc ? ' <span class="text-slate-400 text-xs">' + esc(rg.loc) + '</span>' : ''}</td>
         <td class="px-4 py-2.5 text-slate-600">${esc(typeName)}</td>
         <td class="px-4 py-2.5"><span class="px-2 py-0.5 rounded text-xs ${srcCls}">${src}</span></td>
-        <td class="px-4 py-2.5 text-slate-500 text-xs whitespace-nowrap">${esc(exp)}</td>
+        <td class="px-4 py-2.5 text-slate-500 text-xs whitespace-nowrap leading-tight">
+          ${openTxt
+            ? `<div class="text-slate-600"><span class="text-slate-400">${openSrc}</span> ${esc(openTxt)}</div>
+               <div class="text-rose-600"><span class="text-slate-400">到期</span> ${esc(expTxt || '—')}</div>`
+            : `<div class="text-rose-600"><span class="text-slate-400">到期</span> ${esc(expTxt || '—')}</div>`}
+        </td>
         <td class="px-4 py-2.5 text-xs whitespace-nowrap ${daysCls}">${daysTxt}</td>
         <td class="px-4 py-2.5"><span class="px-2 py-0.5 rounded text-xs ${stCls}">${stName}</span></td>
         <td class="px-4 py-2.5 text-right whitespace-nowrap">
@@ -677,12 +694,13 @@ function copySelected() {
 //  导出
 // ============================================================
 function exportCSV() {
-  const head = ['代理(IP:端口:账号:密码)', '地区', '城市/机房', '品类', '来源', '到期', '剩余天数', '状态'];
+  const head = ['代理(IP:端口:账号:密码)', '地区', '城市/机房', '品类', '来源', '开通时间', '到期时间', '剩余天数', '状态'];
   const lines = [head.join(',')];
   const q = v => {
     const s = v == null ? '' : String(v);
     return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   };
+  const fm = s => s ? String(s).replace('T', ' ').replace(/\.\d+$/, '').slice(0, 16) : '';
   S.filtered.forEach(r => {
     const expTs = Date.parse((r.expireDatetime || '').replace(' ', 'T'));
     const dl = expTs ? Math.ceil((expTs - Date.now()) / 864e5) : '';
@@ -692,7 +710,8 @@ function exportCSV() {
       r.location || '',
       TYPE_MAP[String(r.type)] || (r.type == null ? '' : 'type=' + r.type),
       r.ipnuxProxyId ? 'IPNux' : '本地',
-      (r.expireDatetime || '').slice(0, 10),
+      fm(r.subscribeDatetime || r.effectiveDatetime || r.createTime),
+      fm(r.expireDatetime),
       dl,
       String(r.status) === '1' ? '正常' : (String(r.status) === '2' ? '已停止' : '异常'),
     ].map(q).join(','));
